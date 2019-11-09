@@ -22,7 +22,7 @@ pip install -U -r requirements.txt
 
 Notice: For Windows users, it may be that cloning only works if you are using [Git bash](https://git-scm.com/downloads).
 
-To test if the program runs correctly on your machine, run:
+To test if the program runs correctly on your machine, run (you need to have installed coverage: `pip install coverage`):
 
 ```
 bash run_tests.sh
