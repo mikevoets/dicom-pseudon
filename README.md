@@ -6,9 +6,9 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 
 # Python DICOM Pseudonymizer
 
-This is a Python script for pseudonymization of DICOM files, and can be used from the command line. It takes a source csv file with variables and a source directory containing DICOM files, anonymizes them, and places them to the specified destination. The source csv file will also be de-identified and written to the specific destination. The anonymized DICOM files are also renamed in order to not remain having any sensitive information.
+This is a Python script for pseudonymization of DICOM files, and can be used from the command line. It takes a CSV file with variables and a source directory containing DICOM files, pseudonymizes them, and places them to the specified destination.
 
-The CSV links file should contain variables in a specific order. It is assumed that each row has two numbers: the invitation number and serial number, on the 1st and 2nd place in each row, respectively. The invitation number will be matched with the value in the "(0008, 0050) Accession Number" tag in the corresponding DICOM file. Upon pseudonymization the value of the matching Accession Number will be replaced with the serial number from the CSV file.
+The CSV file should contain variables in a specific order. It is assumed that each row has two numbers: the invitation number and serial number, on the 1st and 2nd place in each row, respectively. The invitation number will be matched with the value in the "(0008, 0050) Accession Number" tag in the corresponding DICOM file. Upon pseudonymization the value of the matching Accession Number will be replaced with the serial number from the CSV file.
 
 ## Prerequisites
 
