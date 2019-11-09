@@ -228,7 +228,7 @@ class DicomPseudon(object):
         return white_listed
 
     def pseudonymize(self, ds):
-        accession_num = ds[ACCESSION_NUMBER].value
+        accession_num = ds.AccessionNumber
         serial_num = self.index.get(accession_num)
 
         if serial_num is None:
@@ -295,7 +295,10 @@ class DicomPseudon(object):
                 ds, serial_num = self.pseudonymize(ds)
             except ValueError as e:
                 self.quarantine_file(source_path, ident_dir,
-                                     'Error running pseudonymize function. Error was: %s' % e)
+                                     'Error running pseudonymize function. ' \
+                                     'There may be no serial number for the ' \
+                                     'accession number in this DICOM file. ' \
+                                     'Error was: %s' % e)
                 continue
 
             rel_destination_dir = os.path.join(clean_dir, serial_num)

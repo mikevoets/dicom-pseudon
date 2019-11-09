@@ -13,5 +13,10 @@ pip-delete-this-directory.txt
 nosetests.xml
 coverage.xml
 
-*.log
+# Test folders
+tests/clean
+tests/quarantine
+tests/samples/Case*
 
+*.db
+*.log
