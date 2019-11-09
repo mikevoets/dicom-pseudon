@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# Copyright (c) 2019, Mike Voets. All rights reserved.
+#
+# Partly based on/inspired from: https://github.com/chop-dbhi/dicom-anon
+
+
 import pydicom
 from pydicom.errors import InvalidDicomError
 from pydicom.tag import Tag
@@ -11,6 +17,7 @@ import csv
 import logging
 import re
 import sqlite3
+
 
 TABLE_EXISTS = 'SELECT name FROM sqlite_master WHERE name=?'
 
@@ -43,6 +50,7 @@ MANUFACTURER_MODEL_NAME = (0x8, 0x1090)
 
 logger = logging.getLogger('dicom_pseudon')
 logger.setLevel(logging.INFO)
+
 
 class Index(object):
 
