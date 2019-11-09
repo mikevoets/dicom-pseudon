@@ -49,7 +49,7 @@ class TestDicomPseudon(unittest.TestCase):
     def setUp(self):
         acc_set = set()
 
-        with open("tests/links.csv", "w") as f:
+        with open("tests/links.csv", "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(['Invitasjonsnummer', 'Loepenummer'])
 
