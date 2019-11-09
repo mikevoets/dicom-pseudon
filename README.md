@@ -1,4 +1,8 @@
-Copyright (c) 2019, Mike Voets. All rights reserved.
+Copyright (c) 2019  Mike Voets
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [LICENSE.md](LICENSE.md) file for details.
 
 # Python DICOM Pseudonymizer
 
@@ -41,8 +45,3 @@ python dicom_pseudon.py identified cleaned links.csv white_list.json
 ```
 
 As a default only [modalities](https://www.dicomlibrary.com/dicom/modality/) MR and CT are allowed. If for any reason you need to specify other modalities, you will need to use the `--modalities` argument and specify the allowed modalities yourself. Multiple modalities should be comma-separated.
-
-
-## License
-
-This project is licensed under the GNU GPL v3.0 License - see the [LICENSE.md](LICENSE.md) file for details.
