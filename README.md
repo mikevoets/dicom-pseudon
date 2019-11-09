@@ -38,7 +38,7 @@ The pseudonymization script creates a SQLite database to index the CSV file with
 
 The white list JSON file that lists the tags that explicitly should not be removed by the pseudonymization script is called `white_list.json`.
 
-Files that could not be linked according to the CSV input file; files are explicitly marked as containing burnt-in data; files that have a series description of "Patient Protocol"; files with a suspect manufacturer (North American Imaging or PACSGEAR); files that have an invalid modality, will be copied to the `quarantine` folder.
+Files that could not be linked according to the CSV input file; files that are explicitly marked as containing burnt-in data; files that have a series description of "Patient Protocol"; files with a suspect manufacturer (North American Imaging or PACSGEAR); files that have an invalid modality, will be copied to the `quarantine` folder.
 
 ```
 python dicom_pseudon.py identified cleaned links.csv white_list.json
