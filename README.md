@@ -22,12 +22,6 @@ pip install -U -r requirements.txt
 
 Notice: For Windows users, it may be that cloning only works if you are using [Git bash](https://git-scm.com/downloads).
 
-To test if the program runs correctly on your machine, run (you need to have installed coverage: `pip install coverage`):
-
-```
-bash run_tests.sh
-```
-
 ## Example
 
 Assume the identified DICOM files are in a directory called `identified` in your home directory, and you want the pseudonymized files to be placed in a directory called `cleaned` in your home directory.
