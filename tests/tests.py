@@ -69,7 +69,7 @@ class TestDicomPseudon(unittest.TestCase):
                 acc_set.add(acc)
                 start = random.randint(0, int(len(acc)/4))
                 end = -random.randint(1, int(len(acc)/4))
-                serial_num = secrets.token_hex(10)
+                serial_num = token_hex(10)
                 writer.writerow([acc[start:end], serial_num])
 
     def tearDown(self):

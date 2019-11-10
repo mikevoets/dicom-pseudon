@@ -12,7 +12,7 @@ The CSV file should contain variables in a specific order. It is assumed that ea
 
 ## Prerequisites
 
-The script runs with Python 3.6. See the [requirements](requirements.txt) for what third-party requirements you will need to have installed.
+The script runs with Python 3.8. See the [requirements](requirements.txt) for what third-party requirements you will need to have installed.
 
 You can install all requirements by using pip:
 
