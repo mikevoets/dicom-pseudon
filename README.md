@@ -6,7 +6,9 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 
 # Python DICOM Pseudonymizer
 
-[![Build Status](https://travis-ci.org/mikevoets/dicom-pseudon.svg?branch=master)](https://travis-ci.org/mikevoets/dicom-pseudon)
+[![Build Status](https://travis-ci.org/mikevoets/dicom-pseudon.svg?branch=master)](https://travis-ci.org/mikevoets/dicom-pseudon) [![Coverage Status](https://coveralls.io/repos/github/mikevoets/dicom-pseudon/badge.svg?branch=master)](https://coveralls.io/github/mikevoets/dicom-pseudon?branch=master) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md)
+
+
 
 This is a Python script for pseudonymization of DICOM files, and can be used from the command line. It takes a CSV file with variables and a source directory containing DICOM files, pseudonymizes them, and places them to the specified destination.
 
