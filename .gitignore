@@ -13,6 +13,9 @@ pip-delete-this-directory.txt
 nosetests.xml
 coverage.xml
 
+# Pyenv
+.python-version
+
 # Test folders
 tests/clean
 tests/quarantine

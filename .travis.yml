@@ -12,8 +12,8 @@ jobs:
       env: PATH=/c/Python38:/c/Python38/Scripts:$PATH
 install:
   - pip3 install --upgrade pip
-  - pip3 install -q coveralls --use-mirrors
-  - pip3 install -r requirements.txt --use-mirrors
+  - pip3 install -q coveralls
+  - pip3 install -r requirements.txt
 script:
   - ./run_tests.sh
 after_success:
