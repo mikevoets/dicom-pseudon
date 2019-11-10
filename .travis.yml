@@ -17,6 +17,6 @@ install:
   - pip3 install -q coveralls
   - pip3 install -r requirements.txt
 script:
-  - bash run_tests.sh
+  - bash scripts/run-tests.bash
 after_success:
   - coveralls
