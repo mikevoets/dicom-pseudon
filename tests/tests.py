@@ -18,10 +18,17 @@ from pydicom.errors import InvalidDicomError
 import dicom_pseudon
 import csv
 import random
-import secrets
 import re
 import os
 import shutil
+
+# Backwards compability for secrets method in Python < 3.6
+try:
+    from secrets import token_hex
+except ImportError:
+    from os import urandom
+    def token_hex(nbytes=None):
+        return urandom(nbytes).hex()
 
 
 STUDY_ID = (0x20, 0x10)
