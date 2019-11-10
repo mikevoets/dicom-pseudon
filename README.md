@@ -4,7 +4,7 @@ This program is free software: you can redistribute it and/or modify it under th
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [LICENSE.md](LICENSE.md) file for details.
 
-# Python DICOM Pseudonymizer
+# Python DICOM Pseudonymizer [![Build Status](https://travis-ci.org/mikevoets/dicom_pseudon.svg?branch=master)](https://travis-ci.org/mikevoets/dicom_pseudon)
 
 This is a Python script for pseudonymization of DICOM files, and can be used from the command line. It takes a CSV file with variables and a source directory containing DICOM files, pseudonymizes them, and places them to the specified destination.
 
