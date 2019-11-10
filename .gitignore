@@ -16,7 +16,8 @@ coverage.xml
 # Test folders
 tests/clean
 tests/quarantine
-tests/samples/Case*
+tests/samples/*
+!tests/samples/1
 
 *.db
 *.log
