@@ -51,6 +51,8 @@ ALLOWED_FILE_META = {  # Attributes taken from https://github.com/dicom/ruby-dic
   (0x2, 0x13): 1  # Implementation Version Name
 }
 
+MEDIA_STORAGE_SOP_INSTANCE_UID = (0x2, 0x3)
+
 ACCESSION_NUMBER = (0x8, 0x50)
 SERIES_DESCR = (0x8, 0x103E)
 MODALITY = (0x8, 0x60)
@@ -232,11 +234,7 @@ class DicomPseudon(object):
     def clean(self, ds, e):
         # Skip accession number, it will be replaced after cleaning attributes
         if e.tag == ACCESSION_NUMBER:
-            return True
-
-        # Following metadata are necessary to not break DICOM
-        if ALLOWED_FILE_META.get((e.tag.group, e.tag.element), None):
-            return True
+            return False
 
         white_listed = self.white_list_handler(e)
 
@@ -246,12 +244,26 @@ class DicomPseudon(object):
         # Tell our caller if we cleaned this element
         return white_listed
 
+    def clean_meta(self, ds, e):
+        white_listed = self.white_list_handler(e)
+
+        if ALLOWED_FILE_META.get((e.tag.group, e.tag.element), None):
+            return False
+        if not white_listed:
+            del ds[e.tag]
+        return white_listed
+
     def pseudonymize(self, ds):
         accession_num = ds.AccessionNumber
         serial_num = self.index.get(accession_num)
 
         if serial_num is None:
             raise ValueError('No serial number for accession number %s' % (accession_num,))
+
+        # Fix file meta data portion
+        if MEDIA_STORAGE_SOP_INSTANCE_UID in ds.file_meta:
+            ds.file_meta[MEDIA_STORAGE_SOP_INSTANCE_UID].value = ds.SOPInstanceUID
+        ds.file_meta.walk(self.clean_meta)
 
         ds.walk(partial(self.clean))
 
