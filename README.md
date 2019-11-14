@@ -1,12 +1,8 @@
-Copyright (c) 2019  Mike Voets
-
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [LICENSE.md](LICENSE.md) file for details.
-
 # Python DICOM Pseudonymizer
 
-[![Build Status](https://travis-ci.org/mikevoets/dicom_pseudon.svg?branch=master)](https://travis-ci.org/mikevoets/dicom_pseudon)
+[![Build Status](https://travis-ci.org/mikevoets/dicom-pseudon.svg?branch=master)](https://travis-ci.org/mikevoets/dicom-pseudon) [![Coverage Status](https://coveralls.io/repos/github/mikevoets/dicom-pseudon/badge.svg?branch=master)](https://coveralls.io/github/mikevoets/dicom-pseudon?branch=master) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md)
+
+
 
 This is a Python script for pseudonymization of DICOM files, and can be used from the command line. It takes a CSV file with variables and a source directory containing DICOM files, pseudonymizes them, and places them to the specified destination.
 
@@ -41,3 +37,11 @@ python dicom_pseudon.py identified cleaned links.csv white_list.json
 ```
 
 As a default only [modalities](https://www.dicomlibrary.com/dicom/modality/) MR and CT are allowed. If for any reason you need to specify other modalities, you will need to use the `--modalities` argument and specify the allowed modalities yourself. Multiple modalities should be comma-separated.
+
+## License
+
+Copyright (c) 2019  Mike Voets
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [LICENSE.md](LICENSE.md) file for details.
