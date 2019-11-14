@@ -79,7 +79,8 @@ class TestDicomPseudon(unittest.TestCase):
                                         white_list_skip_first_line=True,
                                         quarantine="tests/quarantine",
                                         index_file="tests/index.db",
-                                        modalities=["mg"], log_file=None)
+                                        modalities=["mg"], log_file=None,
+                                        is_test=True)
         dp.build_index("tests/samples", "tests/links.csv", skip_first_line=True)
         dp.run("tests/samples", "tests/clean")
 

@@ -160,6 +160,7 @@ class DicomPseudon(object):
         self.log_file = kwargs.get('log_file', 'dicom_pseudon.log')
         self.modalities = [string.lower() for string in kwargs.get('modalities', ['mr', 'ct'])]
         skip_first_line = kwargs.get('white_list_skip_first_line', False)
+        is_test = kwargs.get('is_test', False)
 
         try:
             content = self.load_white_list(white_list_file, skip_first_line)
@@ -168,6 +169,10 @@ class DicomPseudon(object):
             raise Exception('Could not open white list file.')
 
         self.index = Index(self.index_file)
+
+        # Skip logging handlers for tests
+        if is_test:
+            return
 
         logger.handlers = []
         if not self.log_file:
@@ -353,7 +358,10 @@ class DicomPseudon(object):
                 next(f, None)
             reader = csv.reader(f, delimiter=delimiter)
 
+            logger.info('Indexing variables from links file')
+            counter = 0
             for line in reader:
+                counter += 1
                 invitation_num, serial_num = line
 
                 if invitation_num in invitation_num_set:
@@ -368,8 +376,15 @@ class DicomPseudon(object):
                     continue
                 self.index.update(accession_num, serial_num)
 
+        logger.info('Indexed %d invitation numbers' % len(invitation_num_set))
+
     def run(self, ident_dir, clean_dir):
+        counter = 0
+        pseudonymized = 0
+        logger.info('Pseudonymizing DICOM files')
+
         for ds, source_path, filename in self.walk_dicoms(ident_dir, True):
+            counter += 1
             move, reason = self.check_quarantine(ds)
 
             if move:
@@ -385,6 +400,7 @@ class DicomPseudon(object):
                                      'accession number in this DICOM file. ' \
                                      'Error was: %s' % e)
                 continue
+
 
             rel_destination_dir = os.path.join(clean_dir, serial_num)
             destination_dir = self.destination(source_path, rel_destination_dir, ident_dir)
@@ -408,7 +424,9 @@ class DicomPseudon(object):
                 logger.error('Error writing file %s' % clean_name)
                 self.close_all()
                 return False
+            pseudonymized += 1
 
+        logger.info('Pseudonymized %d of %s DICOM files' % (pseudonymized, counter))
         self.close_all()
         return True
 
