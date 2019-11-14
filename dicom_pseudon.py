@@ -21,7 +21,6 @@ from pydicom.tag import Tag
 from pydicom.dataelem import DataElement
 from functools import partial
 import shutil
-import json
 import argparse
 import os
 import csv
@@ -39,20 +38,10 @@ UPDATE = 'UPDATE %s SET serial = ? WHERE original = ?' % TABLE_NAME
 GET = 'SELECT serial FROM %s WHERE original = ?' % TABLE_NAME
 SEARCH = 'SELECT original FROM %s WHERE original LIKE ?' % TABLE_NAME
 
+REMOVED_TEXT = 'Removed by dicom-pseudon'
 DE_IDENTIFICATION_METHOD = 'Pseudonymized by The Cancer Registry of Norway'
 
-ALLOWED_FILE_META = {  # Attributes taken from https://github.com/dicom/ruby-dicom
-  (0x2, 0x0): 1,  # File Meta Information Group Length
-  (0x2, 0x1): 1,  # Version
-  (0x2, 0x2): 1,  # Media Storage SOP Class UID
-  (0x2, 0x3): 1,  # Media Storage SOP Instance UID
-  (0x2, 0x10): 1,  # Transfer Syntax UID
-  (0x2, 0x12): 1,  # Implementation Class UID
-  (0x2, 0x13): 1  # Implementation Version Name
-}
-
 MEDIA_STORAGE_SOP_INSTANCE_UID = (0x2, 0x3)
-
 ACCESSION_NUMBER = (0x8, 0x50)
 SERIES_DESCR = (0x8, 0x103E)
 MODALITY = (0x8, 0x60)
@@ -60,6 +49,59 @@ BURNT_IN = (0x28, 0x301)
 IMAGE_TYPE = (0x8, 0x8)
 MANUFACTURER = (0x8, 0x70)
 MANUFACTURER_MODEL_NAME = (0x8, 0x1090)
+
+ALLOWED_FILE_META = {  # Attributes taken from https://github.com/dicom/ruby-dicom
+  MEDIA_STORAGE_SOP_INSTANCE_UID: 1,
+  (0x2, 0x0): 1,     # File Meta Information Group Length
+  (0x2, 0x1): 1,     # Version
+  (0x2, 0x2): 1,     # Media Storage SOP Class UID
+  (0x2, 0x10): 1,    # Transfer Syntax UID
+  (0x2, 0x12): 1,    # Implementation Class UID
+  (0x2, 0x13): 1     # Implementation Version Name
+}
+
+REQUIRED_TAGS = {  # Attributes taken from https://www.pclviewer.com/help/required_dicom_tags.htm
+  ACCESSION_NUMBER: 1,
+  (0x8, 0x20): 1,    # Study date
+  (0x8, 0x30): 1,    # Study time
+  (0x8, 0x90): 1,    # Referring Physician's Name
+  (0x10, 0x10): 1,   # Patient's name
+  (0x10, 0x20): 1,   # Patient's ID
+  (0x10, 0x30): 1,   # Patietn's date of birth
+  (0x10, 0x40): 1,   # Patient's sex
+  (0x20, 0x10): 1,   # Study ID
+  (0x20, 0x11): 1,   # Series number
+  (0x20, 0x13): 1,   # Instance Number
+  (0x20, 0x20): 1,   # Patient orientation
+  (0x20, 0xD): 1,    # Study UID
+  (0x20, 0xE): 1,    # Series UID
+}
+
+PIXEL_MODULE_TAGS = {  # Attributes taken from http://dicom.nema.org/medical/Dicom/2016a/output/chtml/part03/sect_C.7.6.3.html
+  (0x28, 0x2): 1,    # Samples per Pixel
+  (0x28, 0x4): 1,    # Photometric Interpretation
+  (0x28, 0x6): 1,    # Planar Configuration
+  (0x28, 0x10): 1,   # Rows
+  (0x28, 0x11): 1,   # Columns
+  (0x28, 0x34): 1,   # Pixel Aspect Ratio
+  (0x28, 0x100): 1,  # Bits Allocated
+  (0x28, 0x101): 1,  # Bits Stored
+  (0x28, 0x102): 1,  # High Bit
+  (0x28, 0x103): 1,  # Pixel Representation
+  (0x28, 0x106): 1,  # Smallest Image Pixel Value
+  (0x28, 0x107): 1,  # Largest Image Pixel Value
+  (0x28, 0x121): 1,  # Pixel Padding Range Limit
+  (0x28, 0x1101): 1, # Red Palette Color Lookup Table Descriptor
+  (0x28, 0x1102): 1, # Green Palette Color Lookup Table Descriptor
+  (0x28, 0x1103): 1, # Blue Palette Color Lookup Table Descriptor
+  (0x28, 0x1201): 1, # Red Palette Color Lookup Table Data
+  (0x28, 0x1202): 1, # Green Palette Color Lookup Table Data
+  (0x28, 0x1203): 1, # Blue Palette Color Lookup Table Data
+  (0x28, 0x2000): 1, # ICC Profile
+  (0x28, 0x2002): 1, # Color Space
+  (0x28, 0x7FE0): 1, # Pixel Data Provider URL
+  (0x7FE0, 0x10): 1, # Pixel Data
+}
 
 logger = logging.getLogger('dicom_pseudon')
 logger.setLevel(logging.INFO)
@@ -117,11 +159,11 @@ class DicomPseudon(object):
         self.quarantine = kwargs.get('quarantine', 'quarantine')
         self.log_file = kwargs.get('log_file', 'dicom_pseudon.log')
         self.modalities = [string.lower() for string in kwargs.get('modalities', ['mr', 'ct'])]
+        skip_first_line = kwargs.get('white_list_skip_first_line', False)
 
         try:
-            with open(self.white_list_file, 'r') as handle:
-                content = json.load(handle)
-                self.white_list = self.parse_white_list(content)
+            content = self.load_white_list(white_list_file, skip_first_line)
+            self.white_list = self.parse_white_list(content)
         except IOError:
             raise Exception('Could not open white list file.')
 
@@ -213,35 +255,47 @@ class DicomPseudon(object):
         return False, ''
 
     @staticmethod
-    def parse_white_list(h):
-        value = {}
-        for tag in h.keys():
-            a, b = tag.split(',')
+    def load_white_list(fn, skip_first_line=False):
+        with open(fn, 'r') as f:
+            reader = csv.reader(f)
+            if skip_first_line is True:
+                next(f, None)
+            return [','.join(row) for row in reader]
+
+
+    @staticmethod
+    def parse_white_list(content):
+        values = {}
+        for tag in content:
+            a, b = re.sub(r'[\(\)]', '', tag).split(',')
             t = (int(a, 16), int(b, 16))
-            value[t] = [re.sub(' +', ' ', re.sub('[-_,.]', '', x.strip().lower())) for x in h[tag]]
-        return value
+            values[t] = 1
+        return values
 
     def white_list_handler(self, e):
         value = self.white_list.get((e.tag.group, e.tag.element), None)
         if value:
-            if not '*' in value \
-                    and not re.sub(' +', ' ', re.sub('[-_,.]', '', str(e.value).strip().lower())) in value:
-                logger.info('%s not in white list for %s' % (e.value, e.name))
-                return False
             return True
         return False
 
     def clean(self, ds, e):
-        # Skip accession number, it will be replaced after cleaning attributes
-        if e.tag == ACCESSION_NUMBER:
-            return False
-
+        cleaned = None
         white_listed = self.white_list_handler(e)
 
         if not white_listed:
-            del ds[e.tag]
+            t = (e.tag.group, e.tag.element)
+            if REQUIRED_TAGS.get(t, None):
+                cleaned = ''
+            elif PIXEL_MODULE_TAGS.get(t, None):
+                return True
+            else:
+                del ds[e.tag]
+                cleaned = REMOVED_TEXT
 
-        # Tell our caller if we cleaned this element
+        if cleaned is not None and e.tag in ds and ds[e.tag].value is not None:
+            ds[e.tag].value = cleaned
+
+        # Tell our caller if we left this element intact
         return white_listed
 
     def clean_meta(self, ds, e):
@@ -263,8 +317,8 @@ class DicomPseudon(object):
         # Fix file meta data portion
         if MEDIA_STORAGE_SOP_INSTANCE_UID in ds.file_meta:
             ds.file_meta[MEDIA_STORAGE_SOP_INSTANCE_UID].value = ds.SOPInstanceUID
-        ds.file_meta.walk(self.clean_meta)
 
+        ds.file_meta.walk(self.clean_meta)
         ds.walk(partial(self.clean))
 
         return ds, serial_num
@@ -286,7 +340,7 @@ class DicomPseudon(object):
                         self.quarantine_file(source_path, ident_dir, 'Could not read DICOM file.')
                     continue
 
-    def create_index(self, ident_dir, links_file, delimiter=',', skip_first_line=False):
+    def build_index(self, ident_dir, links_file, delimiter=',', skip_first_line=False):
         # Save accession numbers to virtual search table
         for ds, *_ in self.walk_dicoms(ident_dir):
             self.index.insert(ds.AccessionNumber)
@@ -363,11 +417,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(dest='ident_dir', type=str)
     parser.add_argument(dest='clean_dir', type=str)
-    parser.add_argument(dest='links_file', type=str, help='Path to links csv or xslx file')
-    parser.add_argument(dest='white_list_file', type=str, help='White list json file')
-    parser.add_argument('-d', '--delimiter', type=str, default=',',
+    parser.add_argument(dest='links_file', type=str, help='Path to links csv file')
+    parser.add_argument(dest='white_list_file', type=str, help='Path to white list csv file')
+    parser.add_argument('-sw', '--white_list_skip_first_line', action='store_true', default=False,
+                        help='Skip first line in white list file. Should be set if first line is a header. Defaults to false')
+    parser.add_argument('-dl', '--links_delimiter', type=str, default=',',
                         help='Delimiter for values in links file. Defaults to ,')
-    parser.add_argument('-s', '--skip_first_line', action='store_true', default=False,
+    parser.add_argument('-sl', '--links_skip_first_line', action='store_true', default=False,
                         help='Skip first line in links file. Should be set if first line is a header. Defaults to false')
     parser.add_argument('-q', '--quarantine', type=str, default='quarantine',
                         help='Quarantine directory. Defaults to ./quarantine')
@@ -391,5 +447,5 @@ if __name__ == '__main__':
     del args.delimiter
     del args.skip_first_line
     da = DicomPseudon(w_file, **vars(args))
-    da.create_index(ident_dir, l_file, l_file_delim, l_file_skip_line)
+    da.build_index(ident_dir, l_file, l_file_delim, l_file_skip_line)
     da.run(i_dir, c_dir)

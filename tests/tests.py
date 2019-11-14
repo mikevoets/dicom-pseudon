@@ -31,10 +31,11 @@ except ImportError:
         return urandom(nbytes).hex()
 
 
-STUDY_ID = (0x20, 0x10)
 ACCESSION_NUMBER = (0x8, 0x50)
 IMAGE_LATERALITY = (0x20, 0x62)
-PATIENT_ORIENTATION = (0x20, 0x20)
+PIXEL_DATA = (0x7FE0, 0x10)
+STUDY_UID = (0x20, 0xD)
+STATION_NAME = (0x8, 0x1010)
 
 
 def walk_dicoms(dir):
@@ -56,6 +57,7 @@ class TestDicomPseudon(unittest.TestCase):
     def setUp(self):
         acc_set = set()
 
+        # Create a links csv file from data in /samples
         with open("tests/links.csv", "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(['Invitasjonsnummer', 'Loepenummer'])
@@ -72,6 +74,19 @@ class TestDicomPseudon(unittest.TestCase):
                 serial_num = token_hex(10)
                 writer.writerow([acc[start:end], serial_num])
 
+        # Prepare instance and build index
+        dp = dicom_pseudon.DicomPseudon("tests/white_list.csv",
+                                        white_list_skip_first_line=True,
+                                        quarantine="tests/quarantine",
+                                        index_file="tests/index.db",
+                                        modalities=["mg"], log_file=None)
+        dp.build_index("tests/samples", "tests/links.csv", skip_first_line=True)
+        dp.run("tests/samples", "tests/clean")
+
+        self.orig = pydicom.read_file("tests/samples/1/1_lbm/1.dcm")
+        self.sernum = self.getSerialNumber("R9BF8PC1GE")
+        self.pseu = pydicom.read_file("tests/clean/%s/1.dcm" % self.sernum)
+
     def tearDown(self):
         if os.path.isfile("tests/links.csv"):
             os.remove("tests/links.csv")
@@ -82,34 +97,40 @@ class TestDicomPseudon(unittest.TestCase):
         if os.path.exists("tests/quarantine"):
             shutil.rmtree("tests/quarantine")
 
-    def test(self):
-        ds = pydicom.read_file("tests/samples/1/1_lbm/1.dcm")
-        self.assertEqual(ds.PatientName, "Anonymous Female 1959")
-        self.assertEqual(ds.AccessionNumber, "R9BF8PC1GE")
-        dp = dicom_pseudon.DicomPseudon("tests/white_list.json",
-                                        quarantine="tests/quarantine", index_file="tests/index.db",
-                                        modalities=["mg"], log_file=None)
-        dp.create_index("tests/samples", "tests/links.csv", skip_first_line=True)
-        dp.run("tests/samples", "tests/clean")
-
-        serial_num = None
+    @staticmethod
+    def getSerialNumber(accessionNumber):
         with open("tests/links.csv", "r") as f:
             next(f, None)
             reader = csv.reader(f)
             for line in reader:
-                if re.search(line[0], ds.AccessionNumber):  # R9BF8PC1GE
-                    serial_num = line[1]
-                    break
+                if re.search(line[0], accessionNumber):
+                    return line[1]
 
-        self.assertTrue(serial_num is not None)
-        ds = pydicom.read_file("tests/clean/%s/1.dcm" % serial_num)
-        self.assertTrue(ds.PatientName, "Anonymous Female 1959")
-        self.assertTrue(ACCESSION_NUMBER in ds)
-        self.assertEqual(ds.AccessionNumber, serial_num)
-        # All non-whitelisted tags should be gone
-        self.assertFalse(IMAGE_LATERALITY in ds)
-        # self.assertFalse(STUDY_ID in ds)
-        # self.assertFalse(PATIENT_ORIENTATION in ds)
+    def test_originalFilesHaveAttributes(self):
+        self.assertEqual(self.orig.PatientName, "Anonymous Female 1959")
+        self.assertEqual(self.orig.AccessionNumber, "R9BF8PC1GE")
+
+    def test_accessionNumberIsReplaced(self):
+        self.assertTrue(ACCESSION_NUMBER in self.pseu)
+        self.assertEqual(self.pseu.AccessionNumber, self.sernum)
+
+    def test_nonWhiteListedAndRequiredTagsAreCleaned(self):
+        self.assertEqual(self.pseu.PatientID, "")
+        self.assertEqual(self.pseu.StudyDate, "")
+
+    def test_whiteListedAndRequiredTagsAreNotCleaned(self):
+        self.assertEqual(self.pseu.PatientName, "Anonymous Female 1959")
+
+    def test_nonWhiteListedTagsAreRemoved(self):
+        self.assertFalse(STATION_NAME in self.pseu)
+
+    def test_pixelDataAreNotRemoved(self):
+        self.assertTrue(PIXEL_DATA in self.pseu)
+
+    def test_whiteListedTagsAreNotRemoved(self):
+        self.assertTrue(IMAGE_LATERALITY in self.pseu)
+        self.assertTrue(self.pseu[IMAGE_LATERALITY].value is not None)
+        self.assertTrue(self.pseu[IMAGE_LATERALITY].value.strip() != '')
 
 
 if __name__ == '__main__':
