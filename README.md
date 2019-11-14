@@ -2,11 +2,11 @@
 
 [![Build Status](https://travis-ci.org/mikevoets/dicom-pseudon.svg?branch=master)](https://travis-ci.org/mikevoets/dicom-pseudon) [![Coverage Status](https://coveralls.io/repos/github/mikevoets/dicom-pseudon/badge.svg?branch=master)](https://coveralls.io/github/mikevoets/dicom-pseudon?branch=master) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md)
 
+This is a Python script for pseudonymization of DICOM files, and can be used from the command line. It takes a CSV file with variables and a source directory containing DICOM files, along with a CSV white list with tags that should not be removed. The script then pseudonymizes the DICOM files in the source directory, and places them to the specified destination.
 
+The CSV file with the variables should contain variables in a specific order. It is assumed that each row has two numbers: the invitation number and serial number, on the 1st and 2nd place in each row, respectively. The invitation number will be matched with the value in the "(0008, 0050) Accession Number" tag in the corresponding DICOM file. During pseudonymization the value of the matching Accession Number will be replaced with the serial number from the CSV file.
 
-This is a Python script for pseudonymization of DICOM files, and can be used from the command line. It takes a CSV file with variables and a source directory containing DICOM files, pseudonymizes them, and places them to the specified destination.
-
-The CSV file should contain variables in a specific order. It is assumed that each row has two numbers: the invitation number and serial number, on the 1st and 2nd place in each row, respectively. The invitation number will be matched with the value in the "(0008, 0050) Accession Number" tag in the corresponding DICOM file. Upon pseudonymization the value of the matching Accession Number will be replaced with the serial number from the CSV file.
+The CSV file with the white list should contain a list of tags that should not be removed from the DICOM files. It is assumed this file has only one column for the tags, and that every row contains one unique tag. The tag group and tag element numbers should be separated by a comma. White-spaces and parenthesizes are ignored. Examples of accepted tags are "0020, 0062", "0020,0062", "(0020, 0062)", etc.
 
 ## Prerequisites
 
@@ -26,14 +26,14 @@ Assume the identified DICOM files are in a directory called `identified` in your
 
 The CSV file that contains the mapping between invitation numbers and serial numbers is called `links.csv`.
 
-The pseudonymization script creates a SQLite database to index the CSV file with the mapping. This file can be removed after running this script.
+The pseudonymization script creates a SQLite database to index the CSV file with the mapping from the links file. This file can be removed after running this script.
 
-The white list JSON file that lists the tags that explicitly should not be removed by the pseudonymization script is called `white_list.json`.
+The white list CSV file that lists the tags that explicitly should not be removed by the pseudonymization script is called `white_list.csv`.
 
 Files that could not be linked according to the CSV input file; files that are explicitly marked as containing burnt-in data; files that have a series description of "Patient Protocol"; files with a suspect manufacturer (North American Imaging or PACSGEAR); files that have an invalid modality, will be copied to the `quarantine` folder.
 
 ```
-python dicom_pseudon.py identified cleaned links.csv white_list.json
+python dicom_pseudon.py identified cleaned links.csv white_list.csv
 ```
 
 As a default only [modalities](https://www.dicomlibrary.com/dicom/modality/) MR and CT are allowed. If for any reason you need to specify other modalities, you will need to use the `--modalities` argument and specify the allowed modalities yourself. Multiple modalities should be comma-separated.
