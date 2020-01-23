@@ -454,16 +454,16 @@ if __name__ == '__main__':
     args = parser.parse_args()
     i_dir = args.ident_dir
     c_dir = args.clean_dir
-    w_file = args.while_list_file
+    w_file = args.white_list_file
     l_file = args.links_file
-    l_file_delim = args.delimiter
-    l_file_skip_line = args.skip_first_line
+    l_file_delim = args.links_delimiter
+    l_file_skip_line = args.links_skip_first_line
     del args.ident_dir
     del args.clean_dir
     del args.white_list_file
     del args.links_file
-    del args.delimiter
-    del args.skip_first_line
+    del args.links_delimiter
+    del args.links_skip_first_line
     da = DicomPseudon(w_file, **vars(args))
-    da.build_index(ident_dir, l_file, l_file_delim, l_file_skip_line)
+    da.build_index(i_dir, l_file, l_file_delim, l_file_skip_line)
     da.run(i_dir, c_dir)
