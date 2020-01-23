@@ -40,7 +40,7 @@ As a default only [modalities](https://www.dicomlibrary.com/dicom/modality/) MR 
 
 ## License
 
-Copyright (c) 2019  Mike Voets
+Copyright (c) 2020  Mike Voets
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
