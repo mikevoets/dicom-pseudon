@@ -335,7 +335,7 @@ class DicomPseudon(object):
                     continue
                 source_path = os.path.join(root, filename)
                 try:
-                    yield pydicom.read_file(source_path), source_path, filename
+                    yield pydicom.read_file(source_path), source_path
                 except IOError:
                     logger.error('Error reading file %s' % source_path)
                     self.close_all()
@@ -347,7 +347,7 @@ class DicomPseudon(object):
 
     def build_index(self, ident_dir, links_file, delimiter=',', skip_first_line=False):
         # Save accession numbers to virtual search table
-        for ds, *_ in self.walk_dicoms(ident_dir):
+        for ds, _ in self.walk_dicoms(ident_dir):
             self.index.insert(ds.AccessionNumber)
 
         # Keep track of potential duplicates in links file
@@ -383,7 +383,7 @@ class DicomPseudon(object):
         pseudonymized = 0
         logger.info('Pseudonymizing DICOM files')
 
-        for ds, source_path, filename in self.walk_dicoms(ident_dir, True):
+        for ds, source_path in self.walk_dicoms(ident_dir, True):
             counter += 1
             move, reason = self.check_quarantine(ds)
 
@@ -417,7 +417,11 @@ class DicomPseudon(object):
             t = Tag((0x12, 0x63))
             ds[t] = DataElement(t, 'LO', DE_IDENTIFICATION_METHOD)
 
-            clean_name = os.path.join(destination_dir, filename)
+            count = len([name for name in os.listdir(destination_dir) \
+                         if os.path.isfile(os.path.join(destination_dir, name))])
+
+            clean_name = os.path.join(destination_dir, "%d.dcm" % (count + 1))
+
             try:
                 ds.save_as(clean_name)
             except IOError:

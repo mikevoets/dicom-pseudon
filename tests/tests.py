@@ -62,7 +62,7 @@ class TestDicomPseudon(unittest.TestCase):
             writer = csv.writer(f)
             writer.writerow(['Invitasjonsnummer', 'Loepenummer'])
 
-            for ds, path in walk_dicoms("tests/samples"):
+            for ds, _ in walk_dicoms("tests/samples"):
                 acc = ds.AccessionNumber
 
                 if acc in acc_set:
