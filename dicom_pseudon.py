@@ -27,6 +27,7 @@ import csv
 import logging
 import re
 import sqlite3
+from tqdm import tqdm
 
 
 TABLE_EXISTS = 'SELECT name FROM sqlite_master WHERE name=?'
@@ -329,52 +330,66 @@ class DicomPseudon(object):
         return ds, serial_num
 
     def walk_dicoms(self, ident_dir, quarantine=False):
-        for root, _, files in os.walk(ident_dir):
-            for filename in files:
-                if filename.startswith('.'):
-                    continue
-                source_path = os.path.join(root, filename)
-                try:
-                    yield pydicom.read_file(source_path), source_path
-                except IOError:
-                    logger.error('Error reading file %s' % source_path)
-                    self.close_all()
-                    return False
-                except InvalidDicomError:  # DICOM formatting error
-                    if quarantine:
-                        self.quarantine_file(source_path, ident_dir, 'Could not read DICOM file.')
-                    continue
+        file_count = sum(len(files) for _, _, files in os.walk(ident_dir))
+        with tqdm(total=file_count) as pbar:
+            for root, _, files in os.walk(ident_dir):
+                for filename in files:
+                    try:
+                        if filename.startswith('.'):
+                            continue
+                        source_path = os.path.join(root, filename)
+                        try:
+                            yield pydicom.read_file(source_path), source_path
+                        except IOError:
+                            logger.error('Error reading file %s' % source_path)
+                            self.close_all()
+                            return False
+                        except InvalidDicomError:  # DICOM formatting error
+                            if quarantine:
+                                self.quarantine_file(source_path, ident_dir, 'Could not read DICOM file.')
+                            continue
+                    finally:
+                        pbar.update(1)
 
     def build_index(self, ident_dir, links_file, delimiter=',', skip_first_line=False):
-        # Save accession numbers to virtual search table
+        logger.info('Saving accession numbers to virtual search table')
         for ds, _ in self.walk_dicoms(ident_dir):
             self.index.insert(ds.AccessionNumber)
 
         # Keep track of potential duplicates in links file
         invitation_num_set = set()
 
+        # Count lines in links file
         with open(links_file, 'r') as f:
             if skip_first_line is True:
                 next(f, None)
             reader = csv.reader(f, delimiter=delimiter)
+            line_count = len(list(reader))
 
+        with open(links_file, 'r') as f:
+            if skip_first_line is True:
+                next(f, None)
+            reader = csv.reader(f, delimiter=delimiter)
             logger.info('Indexing variables from links file')
-            counter = 0
-            for line in reader:
-                counter += 1
-                invitation_num, serial_num = line
 
-                if invitation_num in invitation_num_set:
-                    logger.warning('Invitation number %s appears in links file multiple times' % invitation_num)
-                    continue
+            with tqdm(total=line_count) as pbar:
+                for line in reader:
+                    try:
+                        invitation_num, serial_num = line
 
-                invitation_num_set.add(invitation_num)
-                accession_num = self.index.search('%' + invitation_num + '%')
+                        if invitation_num in invitation_num_set:
+                            logger.warning('Invitation number %s appears in links file multiple times' % invitation_num)
+                            continue
 
-                if accession_num is None:
-                    logger.warning('Could not find accession number for invitation number %s' % invitation_num)
-                    continue
-                self.index.update(accession_num, serial_num)
+                        invitation_num_set.add(invitation_num)
+                        accession_num = self.index.search('%' + invitation_num + '%')
+
+                        if accession_num is None:
+                            logger.warning('Could not find accession number for invitation number %s' % invitation_num)
+                            continue
+                        self.index.update(accession_num, serial_num)
+                    finally:
+                        pbar.update(1)
 
         logger.info('Indexed %d invitation numbers' % len(invitation_num_set))
 
