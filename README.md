@@ -38,6 +38,26 @@ python dicom_pseudon.py identified cleaned links.csv white_list.csv
 
 As a default only [modalities](https://www.dicomlibrary.com/dicom/modality/) MR and CT are allowed. If for any reason you need to specify other modalities, you will need to use the `--modalities` argument and specify the allowed modalities yourself. Multiple modalities should be comma-separated.
 
+Run the script with the `-h` flag to see all accepted script parameters.
+
+## Validation
+
+To validate that all DICOM tags except the ones specified in the white list are removed, run the following script:
+
+```
+python validate_dicom_pseudon.py cleaned white_list.csv
+```
+
+Run the script with the `-h` flag to see all accepted script parameters.
+
+The following links specify tags that are required in DICOM files, and they are excluded from removal during pseudonymization:
+
+https://github.com/dicom/ruby-dicom
+https://www.pclviewer.com/help/required_dicom_tags.htm
+http://dicom.nema.org/medical/Dicom/2016a/output/chtml/part03/sect_C.7.6.3.html
+
+The pseudonymization script also adds the "(0012,0062) Patient Identity Removed" and "(0012,0063) Deidentification Method tags" to each DICOM file.
+
 ## License
 
 Copyright (c) 2020  Mike Voets
