@@ -56,7 +56,7 @@ https://github.com/dicom/ruby-dicom
 https://www.pclviewer.com/help/required_dicom_tags.htm
 http://dicom.nema.org/medical/Dicom/2016a/output/chtml/part03/sect_C.7.6.3.html
 
-The pseudonymization script also adds the "(0012,0062) Patient Identity Removed" and "(0012,0063) Deidentification Method tags" to each DICOM file.
+The pseudonymization script also adds the "(0012,0062) Patient Identity Removed" and "(0012,0063) Deidentification Method" to each DICOM file.
 
 ## License
 
