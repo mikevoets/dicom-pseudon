@@ -75,24 +75,23 @@ class TestDicomPseudon(unittest.TestCase):
                 writer.writerow([acc[start:end], serial_num])
 
         # Prepare instance and build index
-        dp = dicom_pseudon.DicomPseudon("tests/white_list.csv",
+        self.dp = dicom_pseudon.DicomPseudon("tests/white_list.csv",
                                         white_list_skip_first_line=True,
                                         quarantine="tests/quarantine",
                                         index_file="tests/index.db",
                                         modalities=["mg"], log_file=None,
                                         is_test=True)
-        dp.build_index("tests/samples", "tests/links.csv", skip_first_line=True)
-        dp.run("tests/samples", "tests/clean")
+        self.dp.build_index("tests/samples", "tests/links.csv", skip_first_line=True)
+        self.dp.run("tests/samples", "tests/clean")
 
         self.orig = pydicom.read_file("tests/samples/1/1_lbm/1.dcm")
         self.sernum = self.getSerialNumber("R9BF8PC1GE")
         self.pseu = pydicom.read_file("tests/clean/%s/1.dcm" % self.sernum)
 
     def tearDown(self):
+        self.dp.clean_up()
         if os.path.isfile("tests/links.csv"):
             os.remove("tests/links.csv")
-        if os.path.isfile("tests/index.db"):
-            os.remove("tests/index.db")
         if os.path.exists("tests/clean"):
             shutil.rmtree("tests/clean")
         if os.path.exists("tests/quarantine"):
