@@ -81,8 +81,8 @@ class TestDicomPseudon(unittest.TestCase):
                                         index_file="tests/index.db",
                                         modalities=["mg"], log_file=None,
                                         is_test=True)
-        self.dp.build_index("tests/samples", "tests/links.csv", skip_first_line=True)
-        self.dp.run("tests/samples", "tests/clean")
+        self.dp.build_index("tests/samples", "tests/links.csv", skip_first_line=True, num_workers=8)
+        self.dp.run("tests/samples", "tests/clean", num_workers=8)
 
         self.orig = pydicom.read_file("tests/samples/1/1_lbm/1.dcm")
         self.sernum = self.getSerialNumber("R9BF8PC1GE")
