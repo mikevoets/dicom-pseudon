@@ -14,24 +14,25 @@
 #
 # Partly based on/inspired from: https://github.com/chop-dbhi/dicom-anon
 
-
 import pydicom
 from pydicom.errors import InvalidDicomError
 from pydicom.tag import Tag
 from pydicom.dataelem import DataElement
 from functools import partial
+import os
 import shutil
 import argparse
-import os
 import csv
 import logging
 import re
 import sqlite3
+from hashlib import md5
 from tqdm import tqdm
 from threading import Thread, Lock
 from queue import Queue, Empty
 
 
+INDEXED_LOCK_FNAME = 'indexed.lock'
 TABLE_EXISTS = 'SELECT name FROM sqlite_master WHERE name=?'
 
 TABLE_NAME = 'accession_numbers'
@@ -40,6 +41,11 @@ INSERT = 'INSERT OR IGNORE INTO %s (original) VALUES (?)' % TABLE_NAME
 UPDATE = 'UPDATE %s SET serial = ? WHERE original = ?' % TABLE_NAME
 GET = 'SELECT serial FROM %s WHERE original = ?' % TABLE_NAME
 SEARCH = 'SELECT original FROM %s WHERE original LIKE ?' % TABLE_NAME
+
+HASH_TABLE_NAME = 'fingerprints'
+CREATE_HASH_TABLE = 'CREATE TABLE %s (id INTEGER PRIMARY KEY AUTOINCREMENT, hash, UNIQUE(hash))' % HASH_TABLE_NAME
+INSERT_HASH = 'INSERT OR IGNORE INTO %s (hash) VALUES (?)' % HASH_TABLE_NAME
+GET_HASH = 'SELECT hash FROM %s WHERE hash = ?' % HASH_TABLE_NAME
 
 REMOVED_TEXT = 'Removed by dicom-pseudon'
 DE_IDENTIFICATION_METHOD = 'Pseudonymized by The Cancer Registry of Norway'
@@ -52,6 +58,7 @@ BURNT_IN = (0x28, 0x301)
 IMAGE_TYPE = (0x8, 0x8)
 MANUFACTURER = (0x8, 0x70)
 MANUFACTURER_MODEL_NAME = (0x8, 0x1090)
+PIXEL_DATA = (0x7FE0, 0x10)
 
 ALLOWED_FILE_META = {  # Attributes taken from https://github.com/dicom/ruby-dicom
   MEDIA_STORAGE_SOP_INSTANCE_UID: 1,
@@ -81,6 +88,7 @@ REQUIRED_TAGS = {  # Attributes taken from https://www.pclviewer.com/help/requir
 }
 
 PIXEL_MODULE_TAGS = {  # Attributes taken from http://dicom.nema.org/medical/Dicom/2016a/output/chtml/part03/sect_C.7.6.3.html
+  PIXEL_DATA: 1,     # Pixel Data
   (0x28, 0x2): 1,    # Samples per Pixel
   (0x28, 0x4): 1,    # Photometric Interpretation
   (0x28, 0x6): 1,    # Planar Configuration
@@ -103,7 +111,6 @@ PIXEL_MODULE_TAGS = {  # Attributes taken from http://dicom.nema.org/medical/Dic
   (0x28, 0x2000): 1, # ICC Profile
   (0x28, 0x2002): 1, # Color Space
   (0x28, 0x7FE0): 1, # Pixel Data Provider URL
-  (0x7FE0, 0x10): 1, # Pixel Data
 }
 
 logger = logging.getLogger('dicom_pseudon')
@@ -153,6 +160,23 @@ class Index(object):
     def update(self, original, serial):
         with self.db as db:
             db.execute(UPDATE, (serial, original,))
+
+    def get_hash(self, hash):
+        if not self.table_exists(HASH_TABLE_NAME):
+            return None
+
+        self.cursor.execute(GET_HASH, (hash,))
+        results = self.cursor.fetchall()
+        if len(results):
+            return results[0][0]
+
+    def insert_hash(self, hash):
+        if not self.table_exists(HASH_TABLE_NAME):
+            with self.db as db:
+                db.execute(CREATE_HASH_TABLE)
+
+        with self.db as db:
+            db.execute(INSERT_HASH, (hash,))
 
 
 class DicomPseudon(object):
@@ -280,11 +304,59 @@ class DicomPseudon(object):
             values[t] = 1
         return values
 
+    @staticmethod
+    def get_fingerprint(ds, preserve_bytes=True):
+        bytes = None
+        if preserve_bytes:
+            bytes = ds.PixelData
+
+        ds[PIXEL_DATA].value = ''
+        json = ds.to_json().encode('utf-8')
+        return md5(json).hexdigest(), bytes
+
     def white_list_handler(self, e):
         value = self.white_list.get((e.tag.group, e.tag.element), None)
         if value:
             return True
         return False
+
+    def index_built(self):
+        return os.path.exists(INDEXED_LOCK_FNAME)
+
+    def input_yes_or_no_prompt(self, question):
+        while True:
+            answer = input('%s [y/n] ' % question)
+            if answer == 'y':
+                return True
+            elif answer == 'n':
+                return False
+            else:
+                print("I didn't get that. Please enter 'y' (yes) or 'n' (no).")
+
+    def prompt_skip_build_index(self):
+        return self.input_yes_or_no_prompt('Index for search table found. Skip indexing?')
+
+    def prompt_skip_prior(self):
+        return self.input_yes_or_no_prompt('Some files in %s have been pseudonymized before. Skip already pseudonymized files?')
+
+    def fingerprints_exist(self):
+        return self.index.table_exists(HASH_TABLE_NAME)
+
+    def register_fingerprint(self, fingerprint, db_lock):
+        try:
+            db_lock.acquire()
+            self.index.insert_hash(fingerprint)
+        finally:
+            db_lock.release()
+
+    def fingerprint_exists(self, fingerprint, db_lock):
+        try:
+            db_lock.acquire()
+            if self.index.get_hash(fingerprint) is not None:
+                return True
+            return False
+        finally:
+            db_lock.release()
 
     def clean(self, ds, e):
         cleaned = None
@@ -365,12 +437,13 @@ class DicomPseudon(object):
                 pbar.update()
 
     def build_index(self, ident_dir, links_file, delimiter=',', skip_first_line=False, num_workers=1):
-        logger.info('Saving accession numbers to virtual search table')
+        logger.info('Indexing accession numbers to search index')
 
         db_lock = Lock()
         queue = Queue()
         file_count = sum(len(files) for _, _, files in os.walk(ident_dir))
         pbar = tqdm(total=file_count)
+        pbar.set_description('Indexing acc. numbers')
 
         for root, _, files in os.walk(ident_dir):
             for filename in files:
@@ -409,6 +482,7 @@ class DicomPseudon(object):
             logger.info('Indexing variables from links file')
 
             with tqdm(total=line_count) as pbar:
+                pbar.set_description('Indexing links file')
                 for line in reader:
                     try:
                         invitation_num, serial_num = line
@@ -427,9 +501,18 @@ class DicomPseudon(object):
                     finally:
                         pbar.update()
 
+        # Create lock file to indicate that index has been created
+        try:
+            open(INDEXED_LOCK_FNAME, 'w').close()
+        except IOError:
+            logger.error('Error writing lock file %s' % INDEXED_LOCK_FNAME)
+            self.close_all()
+            return
+
         logger.info('Indexed %d invitation numbers' % len(invitation_num_set))
 
-    def walk_dicom(self, ident_dir, clean_dir, ds, source_path, fs_lock, db_lock):
+
+    def walk_dicom(self, ident_dir, clean_dir, ds, source_path, fs_lock, db_lock, fingerprint):
         move, reason = self.check_quarantine(ds)
 
         if move:
@@ -462,30 +545,34 @@ class DicomPseudon(object):
         t = Tag((0x12, 0x63))
         ds[t] = DataElement(t, 'LO', DE_IDENTIFICATION_METHOD)
 
-        clean_name = ""
         try:
             fs_lock.acquire()
             count = len([name for name in os.listdir(destination_dir) \
                          if os.path.isfile(os.path.join(destination_dir, name))])
             clean_name = os.path.join(destination_dir, "%d.dcm" % (count + 1))
+
+            try:
+                ds.save_as(clean_name)
+            except IOError:
+                logger.error('Error writing file %s' % clean_name)
+                self.close_all()
+                return False
         finally:
             fs_lock.release()
 
-        try:
-            ds.save_as(clean_name)
-        except IOError:
-            logger.error('Error writing file %s' % clean_name)
-            self.close_all()
-            return False
+        # Pseudonymization was successful, register fingerprint in database
+        self.register_fingerprint(fingerprint, db_lock)
+
         return True
 
-    def run_worker(self, clean_dir, ident_dir, queue, pbar, fs_lock, db_lock, counter_queue):
+    def run_worker(self, clean_dir, ident_dir, queue, pbar, fs_lock, db_lock, counter_queue, skip_prior):
+        prior = 0
         pseudonymized = 0
 
         while True:
             task = queue.get()
             if task is None:
-                counter_queue.put(pseudonymized)
+                counter_queue.put((pseudonymized, prior))
                 break
 
             root, filename = task
@@ -493,6 +580,7 @@ class DicomPseudon(object):
                 if filename.startswith('.'):
                     continue
                 source_path = os.path.join(root, filename)
+
                 ds = None
                 try:
                     ds = pydicom.read_file(source_path)
@@ -503,13 +591,21 @@ class DicomPseudon(object):
                 except InvalidDicomError:  # DICOM formatting error
                     self.quarantine_file(source_path, ident_dir, 'Could not read DICOM file.')
                     continue
-                if self.walk_dicom(ident_dir, clean_dir, ds, source_path, fs_lock, db_lock):
-                    pseudonymized += 1
+
+                fp, bytes = self.get_fingerprint(ds)
+                if skip_prior and self.fingerprint_exists(fp, db_lock):
+                    # This file has been pseudonymized already, skip
+                    prior += 1
+                else:
+                    ds[PIXEL_DATA].value = bytes  # Restore pixel data
+                    if self.walk_dicom(ident_dir, clean_dir, ds, source_path, fs_lock, db_lock, fp):
+                        pseudonymized += 1
+
             finally:
                 queue.task_done()
                 pbar.update()
 
-    def run(self, ident_dir, clean_dir, num_workers=1):
+    def run(self, ident_dir, clean_dir, num_workers=1, skip_prior=False):
         logger.info('Pseudonymizing DICOM files')
 
         fs_lock = Lock()
@@ -518,6 +614,7 @@ class DicomPseudon(object):
         queue = Queue()
         file_count = sum(len(files) for _, _, files in os.walk(ident_dir))
         pbar = tqdm(total=file_count)
+        pbar.set_description('Pseudonymizing files')
 
         for root, _, files in os.walk(ident_dir):
             for filename in files:
@@ -527,7 +624,7 @@ class DicomPseudon(object):
         for _ in range(num_workers):
             t = Thread(target=self.run_worker,
                        args=(clean_dir, ident_dir, queue, pbar, fs_lock,
-                             db_lock, counter_queue,))
+                             db_lock, counter_queue, skip_prior))
             t.start()
             threads.append(t)
 
@@ -538,17 +635,32 @@ class DicomPseudon(object):
         for t in threads:
             t.join()
 
+        prior = 0
         pseudonymized = 0
         while True:
             try:
-                pseudonymized += counter_queue.get_nowait()
+                pz, pr = counter_queue.get_nowait()
+                pseudonymized += pz
+                prior += pr
             except Empty:
                 break
 
         pbar.close()
         logger.info('Pseudonymized %d of %s DICOM files' % (pseudonymized, file_count))
+
+        if prior > 0:
+            logger.info('Skipped %d DICOM files because they were either duplicates or pseudonymized before' % prior)
+
         self.close_all()
         return True
+
+    def clean_up(self):
+        logger.info('Cleaning up index and database files')
+        try:
+            os.remove(INDEXED_LOCK_FNAME)
+            os.remove(self.index_file)
+        except OSError as err:
+            logger.error(err)
 
 
 if __name__ == '__main__':
@@ -588,6 +700,19 @@ if __name__ == '__main__':
     del args.links_delimiter
     del args.links_skip_first_line
     del args.num_workers
+
     da = DicomPseudon(w_file, **vars(args))
-    da.build_index(i_dir, l_file, l_file_delim, l_file_skip_line)
-    da.run(i_dir, c_dir, n_workers)
+
+    skip_build_index = False
+    if da.index_built():
+        skip_build_index = da.prompt_skip_build_index()
+    if not skip_build_index:
+        da.build_index(i_dir, l_file, l_file_delim, l_file_skip_line)
+
+    skip_prior_pseudonymized = False
+    if da.fingerprints_exist():
+        skip_prior_pseudonymized = da.prompt_skip_prior()
+    da.run(i_dir, c_dir, n_workers, skip_prior_pseudonymized)
+    da.clean_up()
+    
+    logger.info('Finished')
