@@ -531,9 +531,14 @@ class DicomPseudon(object):
 
 
         rel_destination_dir = os.path.join(clean_dir, serial_num)
+
         destination_dir = self.destination(source_path, rel_destination_dir, ident_dir)
-        if not os.path.exists(destination_dir):
+        try:
             os.makedirs(destination_dir)
+        except FileExistsError:
+            # Do nothing
+            pass
+
         # Set Accession Number to serial number from links file
         ds[ACCESSION_NUMBER].value = serial_num
 
@@ -714,5 +719,5 @@ if __name__ == '__main__':
         skip_prior_pseudonymized = da.prompt_skip_prior()
     da.run(i_dir, c_dir, n_workers, skip_prior_pseudonymized)
     da.clean_up()
-    
+
     logger.info('Finished')
