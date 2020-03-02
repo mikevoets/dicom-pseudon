@@ -336,8 +336,8 @@ class DicomPseudon(object):
     def prompt_skip_build_index(self):
         return self.input_yes_or_no_prompt('Index for search table found. Skip indexing?')
 
-    def prompt_skip_prior(self):
-        return self.input_yes_or_no_prompt('Some files in %s have been pseudonymized before. Skip already pseudonymized files?')
+    def prompt_skip_prior(self, dir_name):
+        return self.input_yes_or_no_prompt('Some files in %s have been pseudonymized before. Skip already pseudonymized files?' % dir_name)
 
     def fingerprints_exist(self):
         return self.index.table_exists(HASH_TABLE_NAME)
@@ -716,7 +716,7 @@ if __name__ == '__main__':
 
     skip_prior_pseudonymized = False
     if da.fingerprints_exist():
-        skip_prior_pseudonymized = da.prompt_skip_prior()
+        skip_prior_pseudonymized = da.prompt_skip_prior(i_dir)
     da.run(i_dir, c_dir, n_workers, skip_prior_pseudonymized)
     da.clean_up()
 
