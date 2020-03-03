@@ -26,6 +26,8 @@ import csv
 import logging
 import re
 import sqlite3
+from signal import signal, SIGINT
+from sys import exit
 from hashlib import md5
 from tqdm import tqdm
 from threading import Thread, Lock
@@ -453,8 +455,9 @@ class DicomPseudon(object):
         for _ in range(num_workers):
             t = Thread(target=self.build_index_worker,
                        args=(ident_dir, queue, pbar, db_lock,))
-            t.start()
             threads.append(t)
+            t.daemon = True
+            t.start()
 
         queue.join()
 
@@ -630,8 +633,9 @@ class DicomPseudon(object):
             t = Thread(target=self.run_worker,
                        args=(clean_dir, ident_dir, queue, pbar, fs_lock,
                              db_lock, counter_queue, skip_prior))
-            t.start()
             threads.append(t)
+            t.daemon = True
+            t.start()
 
         queue.join()
 
@@ -668,7 +672,14 @@ class DicomPseudon(object):
             logger.error(err)
 
 
+def exit_handler(signal_received, frame):
+    print('Exited gracefully')
+    exit(0)
+
+
 if __name__ == '__main__':
+    signal(SIGINT, exit_handler)
+    
     parser = argparse.ArgumentParser()
     parser.add_argument(dest='ident_dir', type=str)
     parser.add_argument(dest='clean_dir', type=str)

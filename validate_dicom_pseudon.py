@@ -26,6 +26,8 @@ import os
 import csv
 import logging
 import re
+from signal import signal, SIGINT
+from sys import exit
 from tqdm import tqdm
 from threading import Thread, Lock
 from queue import Queue, Empty
@@ -227,8 +229,9 @@ class ValidateDicomPseudon(object):
         threads = []
         for _ in range(num_workers):
             t = Thread(target=self.run_worker, args=(queue, pbar,))
-            t.start()
             threads.append(t)
+            t.daemon = True
+            t.start()
 
         queue.join()
 
@@ -243,7 +246,14 @@ class ValidateDicomPseudon(object):
         return True
 
 
+def exit_handler(signal_received, frame):
+    print('Exited gracefully')
+    exit(0)
+
+
 if __name__ == '__main__':
+    signal(SIGINT, exit_handler)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(dest='clean_dir', type=str)
     parser.add_argument(dest='white_list_file', type=str, help='Path to white list csv file')
