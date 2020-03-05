@@ -31,11 +31,7 @@ from sys import exit
 from hashlib import md5
 from threading import Thread, Lock
 from queue import Queue, Empty
-
-try:
-    from tqdm import tqdm
-except ModuleNotFoundError:
-    from utils.fake_tqdm import tqdm
+from tqdm import tqdm
 
 
 INDEXED_LOCK_FNAME = 'indexed.lock'
