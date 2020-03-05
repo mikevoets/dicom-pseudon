@@ -18,6 +18,12 @@ You can install all requirements by using pip:
 pip install -U -r requirements.txt
 ```
 
+Alternatively, install the dependencies with the provided wheel distributions in the bin folder:
+
+```
+pip install ./bin/* -f ./ --no-index
+```
+
 Notice: For Windows users, it may be that cloning only works if you are using [Git bash](https://git-scm.com/downloads).
 
 ### Progress bars (optional)
