@@ -26,17 +26,6 @@ pip install ./bin/* -f ./ --no-index
 
 Notice: For Windows users, it may be that cloning only works if you are using [Git bash](https://git-scm.com/downloads).
 
-### Progress bars (optional)
-
-To view the progress of the script with [tqdm](https://github.com/tqdm/tqdm) progress bars, install _tqdm_:
-
-```
-pip install tqdm==4.43.0
-
-# Alternatively:
-pip install ./bin/tqdm-4.43.0-py2.py3-none-any.whl
-```
-
 ## Example
 
 Assume the identified DICOM files are in a directory called `identified` in your home directory, and you want the pseudonymized files to be placed in a directory called `cleaned` in your home directory.
