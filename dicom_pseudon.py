@@ -29,9 +29,13 @@ import sqlite3
 from signal import signal, SIGINT
 from sys import exit
 from hashlib import md5
-from tqdm import tqdm
 from threading import Thread, Lock
 from queue import Queue, Empty
+
+try:
+    from tqdm import tqdm
+except ModuleNotFoundError:
+    from utils.fake_tqdm import tqdm
 
 
 INDEXED_LOCK_FNAME = 'indexed.lock'
@@ -679,7 +683,7 @@ def exit_handler(signal_received, frame):
 
 if __name__ == '__main__':
     signal(SIGINT, exit_handler)
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument(dest='ident_dir', type=str)
     parser.add_argument(dest='clean_dir', type=str)

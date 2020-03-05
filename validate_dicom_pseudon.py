@@ -28,9 +28,13 @@ import logging
 import re
 from signal import signal, SIGINT
 from sys import exit
-from tqdm import tqdm
 from threading import Thread, Lock
 from queue import Queue, Empty
+
+try:
+    from tqdm import tqdm
+except ModuleNotFoundError:
+    from utils.fake_tqdm import tqdm
 
 
 MEDIA_STORAGE_SOP_INSTANCE_UID = (0x2, 0x3)
