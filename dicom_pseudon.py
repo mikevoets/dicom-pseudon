@@ -15,20 +15,22 @@
 # Partly based on/inspired from: https://github.com/chop-dbhi/dicom-anon
 
 import pydicom
+from pydicom.filereader import dcmread
 from pydicom.errors import InvalidDicomError
 from pydicom.tag import Tag
 from pydicom.dataelem import DataElement
 from functools import partial
+import io
 import os
-import shutil
 import argparse
 import csv
 import logging
 import re
 import sqlite3
+import hashlib
+import shutil
 from signal import signal, SIGINT
 from sys import exit
-from hashlib import md5
 from threading import Thread, Lock
 from queue import Queue, Empty
 from tqdm import tqdm
@@ -307,14 +309,13 @@ class DicomPseudon(object):
         return values
 
     @staticmethod
-    def get_fingerprint(ds, preserve_bytes=True):
-        bytes = None
-        if preserve_bytes:
-            bytes = ds.PixelData
-
-        ds[PIXEL_DATA].value = ''
-        json = ds.to_json().encode('utf-8')
-        return md5(json).hexdigest(), bytes
+    def buffer_fingerprint(filepath, buffer):
+        hash = hashlib.md5()
+        with open(filepath, 'rb') as f:
+            for chunk in iter(lambda: f.read(65536), b''):
+                hash.update(chunk)
+                buffer.write(chunk)
+        return hash.hexdigest()
 
     def white_list_handler(self, e):
         value = self.white_list.get((e.tag.group, e.tag.element), None)
@@ -422,7 +423,7 @@ class DicomPseudon(object):
                 source_path = os.path.join(root, filename)
                 ds = None
                 try:
-                    ds = pydicom.read_file(source_path)
+                    ds = dcmread(source_path, stop_before_pixels=True)
                 except IOError:
                     logger.error('Error reading file %s' % source_path)
                     self.close_all()
@@ -589,25 +590,30 @@ class DicomPseudon(object):
                     continue
                 source_path = os.path.join(root, filename)
 
-                ds = None
                 try:
-                    ds = pydicom.read_file(source_path)
-                except IOError:
-                    logger.error('Error reading file %s' % source_path)
-                    self.close_all()
-                    return False
-                except InvalidDicomError:  # DICOM formatting error
-                    self.quarantine_file(source_path, ident_dir, 'Could not read DICOM file.')
-                    continue
+                    buffer = io.BytesIO()
+                    fp = self.buffer_fingerprint(source_path, buffer)
+                    buffer.seek(0)
 
-                fp, bytes = self.get_fingerprint(ds)
-                if skip_prior and self.fingerprint_exists(fp, db_lock):
-                    # This file has been pseudonymized already, skip
-                    prior += 1
-                else:
-                    ds[PIXEL_DATA].value = bytes  # Restore pixel data
-                    if self.walk_dicom(ident_dir, clean_dir, ds, source_path, fs_lock, db_lock, fp):
-                        pseudonymized += 1
+                    ds = None
+                    try:
+                        ds = dcmread(buffer)
+                    except IOError:
+                        logger.error('Error reading file %s' % source_path)
+                        self.close_all()
+                        return False
+                    except InvalidDicomError:  # DICOM formatting error
+                        self.quarantine_file(source_path, ident_dir, 'Could not read DICOM file.')
+                        continue
+
+                    if skip_prior and self.fingerprint_exists(fp, db_lock):
+                        # This file has been pseudonymized already, skip
+                        prior += 1
+                    else:
+                        if self.walk_dicom(ident_dir, clean_dir, ds, source_path, fs_lock, db_lock, fp):
+                            pseudonymized += 1
+                finally:
+                    buffer.close()
 
             finally:
                 queue.task_done()
