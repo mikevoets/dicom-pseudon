@@ -250,10 +250,16 @@ class ValidateDicomPseudon(object):
 
         for _ in range(num_workers):
             queue.put(None)
+
+        queue.close()
+        queue.join_thread()
+
         for p in processes:
             p.join()
 
         pbar_q.put(None)
+        pbar_q.close()
+        pbar_q.join_thread()
         pbar_p.join()
 
         logger.info('Validated %s pseudonymized DICOM files' % file_count)

@@ -476,10 +476,16 @@ class DicomPseudon(object):
 
         for _ in range(num_workers):
             queue.put(None)
+
+        queue.close()
+        queue.join_thread()
+
         for p in processes:
             p.join()
 
         pbar_q.put(None)
+        pbar_q.close()
+        pbar_q.join_thread()
         pbar_p.join()
 
         # Keep track of potential duplicates in links file
@@ -660,6 +666,10 @@ class DicomPseudon(object):
 
         for _ in range(num_workers):
             queue.put(None)
+
+        queue.close()
+        queue.join_thread()
+
         for p in processes:
             p.join()
 
@@ -673,7 +683,12 @@ class DicomPseudon(object):
             except Empty:
                 break
 
+        counter_queue.close()
+        counter_queue.join_thread()
+
         pbar_q.put(None)
+        pbar_q.close()
+        pbar_q.join_thread()
         pbar_p.join()
 
         logger.info('Pseudonymized %d of %s DICOM files' % (pseudonymized, file_count))
