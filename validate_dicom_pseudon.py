@@ -28,8 +28,8 @@ import logging
 import re
 from signal import signal, SIGINT
 from sys import exit
-from threading import Thread, Lock
-from queue import Queue, Empty
+from multiprocessing import Process, Lock, Queue
+from queue import Empty
 from tqdm import tqdm
 
 
@@ -102,6 +102,19 @@ ADDED_TAGS = {
 
 logger = logging.getLogger('dicom_pseudon')
 logger.setLevel(logging.INFO)
+
+
+def pbar_listener(q, total, description):
+    with tqdm(total=total) as pbar:
+        pbar.set_description(description)
+        for item in iter(q.get, None):
+            pbar.update()
+
+
+def initialize_pbar_proc(total, description):
+    q = Queue()
+    p = Process(target=pbar_listener, args=(q, total, description,))
+    return p, q
 
 
 class ValidateDicomPseudon(object):
@@ -192,7 +205,7 @@ class ValidateDicomPseudon(object):
 
         return ds
 
-    def run_worker(self, queue, pbar):
+    def run_worker(self, queue, pbar_queue):
         while True:
             task = queue.get()
             if task is None:
@@ -212,35 +225,37 @@ class ValidateDicomPseudon(object):
                     return False
                 self.validate(ds)
             finally:
-                queue.task_done()
-                pbar.update()
+                pbar_queue.put(1)
 
     def run(self, clean_dir, num_workers=1):
         logger.info('Validating pseudonymized DICOM files')
 
         queue = Queue()
         file_count = sum(len(files) for _, _, files in os.walk(clean_dir))
-        pbar = tqdm(total=file_count)
+
+        pbar_p, pbar_q = initialize_pbar_proc(total=file_count,
+                                              description='Validating files')
+        pbar_p.start()
 
         for root, _, files in os.walk(clean_dir):
             for filename in files:
                 queue.put((root, filename,))
 
-        threads = []
+        processes = []
         for _ in range(num_workers):
-            t = Thread(target=self.run_worker, args=(queue, pbar,))
-            threads.append(t)
-            t.daemon = True
-            t.start()
-
-        queue.join()
+            p = Process(target=self.run_worker, args=(queue, pbar_q,))
+            processes.append(p)
+            p.daemon = True
+            p.start()
 
         for _ in range(num_workers):
             queue.put(None)
-        for t in threads:
-            t.join()
+        for p in processes:
+            p.join()
 
-        pbar.close()
+        pbar_q.put(None)
+        pbar_p.join()
+
         logger.info('Validated %s pseudonymized DICOM files' % file_count)
         self.close_all()
         return True
@@ -262,7 +277,7 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--log_file', type=str, default=None,
                         help='Name of file to log messages to. Defaults to console')
     parser.add_argument('-w', '--num_workers', type=int, default=1,
-                        help='Amount of worker threads. Defaults to 1')
+                        help='Amount of worker processes. Defaults to 1')
     args = parser.parse_args()
     c_dir = args.clean_dir
     w_file = args.white_list_file
