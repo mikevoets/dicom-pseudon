@@ -689,9 +689,8 @@ class DicomPseudon(object):
         try:
             os.remove(INDEXED_LOCK_FNAME)
             os.remove(self.index_file)
-            os.remove(self.index_file + '-journal')
         except OSError as err:
-            pass
+            logger.error(err)
 
 
 def exit_handler(signal_received, frame):
