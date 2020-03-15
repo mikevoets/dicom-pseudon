@@ -23,4 +23,5 @@ tests/samples/*
 !tests/samples/1
 
 *.db
+*.db*
 *.log
