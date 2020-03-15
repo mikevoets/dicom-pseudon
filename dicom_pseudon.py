@@ -31,10 +31,9 @@ import hashlib
 import shutil
 from signal import signal, SIGINT
 from sys import exit
-from multiprocessing import Queue, Process, Lock
-from queue import Empty
+from threading import Thread, Lock
+from queue import Queue, Empty
 from tqdm import tqdm
-from filelock import FileLock
 
 
 INDEXED_LOCK_FNAME = 'indexed.lock'
@@ -121,18 +120,6 @@ PIXEL_MODULE_TAGS = {  # Attributes taken from http://dicom.nema.org/medical/Dic
 logger = logging.getLogger('dicom_pseudon')
 logger.setLevel(logging.INFO)
 
-
-def pbar_listener(q, total, description):
-    with tqdm(total=total) as pbar:
-        pbar.set_description(description)
-        for item in iter(q.get, None):
-            pbar.update()
-
-
-def initialize_pbar_proc(total, description):
-    q = Queue()
-    p = Process(target=pbar_listener, args=(q, total, description,))
-    return p, q
 
 class Index(object):
 
@@ -423,7 +410,7 @@ class DicomPseudon(object):
 
         return ds, serial_num
 
-    def build_index_worker(self, ident_dir, queue, pbar_queue, db_lock):
+    def build_index_worker(self, ident_dir, queue, pbar, db_lock):
         while True:
             task = queue.get()
             if task is None:
@@ -449,7 +436,8 @@ class DicomPseudon(object):
                 finally:
                     db_lock.release()
             finally:
-                pbar_queue.put(1)
+                queue.task_done()
+                pbar.update()
 
     def build_index(self, ident_dir, links_file, delimiter=',', skip_first_line=False, num_workers=1):
         logger.info('Indexing accession numbers to search index')
@@ -457,30 +445,29 @@ class DicomPseudon(object):
         db_lock = Lock()
         queue = Queue()
         file_count = sum(len(files) for _, _, files in os.walk(ident_dir))
-
-        pbar_p, pbar_q = initialize_pbar_proc(total=file_count,
-                                              description='Indexing acc. numbers')
-        pbar_p.start()
+        pbar = tqdm(total=file_count)
+        pbar.set_description('Indexing acc. numbers')
 
         for root, _, files in os.walk(ident_dir):
             for filename in files:
                 queue.put((root, filename,))
 
-        processes = []
+        threads = []
         for _ in range(num_workers):
-            p = Process(target=self.build_index_worker,
-                        args=(ident_dir, queue, pbar_q, db_lock,))
-            processes.append(p)
-            p.daemon = True
-            p.start()
+            t = Thread(target=self.build_index_worker,
+                       args=(ident_dir, queue, pbar, db_lock,))
+            threads.append(t)
+            t.daemon = True
+            t.start()
+
+        queue.join()
 
         for _ in range(num_workers):
             queue.put(None)
-        for p in processes:
-            p.join()
+        for t in threads:
+            t.join()
 
-        pbar_q.put(None)
-        pbar_p.join()
+        pbar.close()
 
         # Keep track of potential duplicates in links file
         invitation_num_set = set()
@@ -529,7 +516,7 @@ class DicomPseudon(object):
         logger.info('Indexed %d invitation numbers' % len(invitation_num_set))
 
 
-    def walk_dicom(self, ident_dir, clean_dir, ds, source_path, db_lock, fingerprint):
+    def walk_dicom(self, ident_dir, clean_dir, ds, source_path, fs_lock, db_lock, fingerprint):
         move, reason = self.check_quarantine(ds)
 
         if move:
@@ -567,13 +554,11 @@ class DicomPseudon(object):
         t = Tag((0x12, 0x63))
         ds[t] = DataElement(t, 'LO', DE_IDENTIFICATION_METHOD)
 
-        fs_lock = FileLock(os.path.join(destination_dir, '.lockfile'))
-        fs_lock.acquire()
-
         try:
+            fs_lock.acquire()
             count = len([name for name in os.listdir(destination_dir) \
                          if os.path.isfile(os.path.join(destination_dir, name))])
-            clean_name = os.path.join(destination_dir, "%d.dcm" % count)
+            clean_name = os.path.join(destination_dir, "%d.dcm" % (count + 1))
 
             try:
                 ds.save_as(clean_name)
@@ -589,7 +574,7 @@ class DicomPseudon(object):
 
         return True
 
-    def run_worker(self, clean_dir, ident_dir, queue, pbar_queue, db_lock, counter_queue, skip_prior):
+    def run_worker(self, clean_dir, ident_dir, queue, pbar, fs_lock, db_lock, counter_queue, skip_prior):
         prior = 0
         pseudonymized = 0
 
@@ -625,43 +610,45 @@ class DicomPseudon(object):
                         # This file has been pseudonymized already, skip
                         prior += 1
                     else:
-                        if self.walk_dicom(ident_dir, clean_dir, ds, source_path, db_lock, fp):
+                        if self.walk_dicom(ident_dir, clean_dir, ds, source_path, fs_lock, db_lock, fp):
                             pseudonymized += 1
                 finally:
                     buffer.close()
 
             finally:
-                pbar_queue.put(1)
+                queue.task_done()
+                pbar.update()
 
     def run(self, ident_dir, clean_dir, num_workers=1, skip_prior=False):
         logger.info('Pseudonymizing DICOM files')
 
+        fs_lock = Lock()
         db_lock = Lock()
         counter_queue = Queue()
         queue = Queue()
         file_count = sum(len(files) for _, _, files in os.walk(ident_dir))
-
-        pbar_p, pbar_q = initialize_pbar_proc(total=file_count,
-                                              description='Pseudonymizing files')
-        pbar_p.start()
+        pbar = tqdm(total=file_count)
+        pbar.set_description('Pseudonymizing files')
 
         for root, _, files in os.walk(ident_dir):
             for filename in files:
                 queue.put((root, filename,))
 
-        processes = []
+        threads = []
         for _ in range(num_workers):
-            p = Process(target=self.run_worker,
-                        args=(clean_dir, ident_dir, queue, pbar_q,
-                              db_lock, counter_queue, skip_prior))
-            processes.append(p)
-            p.daemon = True
-            p.start()
+            t = Thread(target=self.run_worker,
+                       args=(clean_dir, ident_dir, queue, pbar, fs_lock,
+                             db_lock, counter_queue, skip_prior))
+            threads.append(t)
+            t.daemon = True
+            t.start()
+
+        queue.join()
 
         for _ in range(num_workers):
             queue.put(None)
-        for p in processes:
-            p.join()
+        for t in threads:
+            t.join()
 
         prior = 0
         pseudonymized = 0
@@ -673,9 +660,7 @@ class DicomPseudon(object):
             except Empty:
                 break
 
-        pbar_q.put(None)
-        pbar_p.join()
-
+        pbar.close()
         logger.info('Pseudonymized %d of %s DICOM files' % (pseudonymized, file_count))
 
         if prior > 0:
@@ -721,7 +706,7 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--log_file', type=str, default=None,
                         help='Name of file to log messages to. Defaults to console')
     parser.add_argument('-w', '--num_workers', type=int, default=1,
-                        help='Amount of worker processes. Defaults to 1')
+                        help='Amount of worker threads. Defaults to 1')
     args = parser.parse_args()
     i_dir = args.ident_dir
     c_dir = args.clean_dir
